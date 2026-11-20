@@ -41,12 +41,20 @@ def answer_unsafe(question, role, k=3):
     return reply, chunks
 
 
-def answer(question, role, k=3):
-    """Full pipeline with all four guardrail layers."""
+def answer(question, role, k=3, events=None):
+    """Full pipeline with all four guardrail layers.
+
+    If an `events` list is passed in, every security decision is appended to it,
+    so a UI can show which layer caught what.
+    """
+    if events is None:
+        events = []
+
     # Layer 1: direct injection in the question
     attack = guardrails.check_input(question)
     if attack:
         guardrails.log_event(f"input_blocked:{attack}", question, role)
+        events.append({"layer": "Layer 1: input check", "detail": f"Question blocked ({attack})"})
         return guardrails.REFUSAL, []
 
     # Retrieval (role-based access control happens inside retrieve)
@@ -56,6 +64,10 @@ def answer(question, role, k=3):
     chunks, quarantined = guardrails.screen_chunks(chunks)
     for q in quarantined:
         guardrails.log_event(f"chunk_quarantined:{q['reason']}", f"{q['source']}: {q['text']}", role)
+        events.append({
+            "layer": "Layer 2: document screening",
+            "detail": f"Quarantined a chunk of {q['source']} ({q['reason']})",
+        })
 
     # Layer 3: hardened prompt with a fresh canary each time
     canary = guardrails.new_canary()
@@ -65,6 +77,7 @@ def answer(question, role, k=3):
     problem = guardrails.check_output(reply, chunks, canary)
     if problem:
         guardrails.log_event(f"output_blocked:{problem}", reply, role)
+        events.append({"layer": "Layer 4: output check", "detail": f"Answer blocked ({problem})"})
         return guardrails.REFUSAL, chunks
 
     return reply, chunks

