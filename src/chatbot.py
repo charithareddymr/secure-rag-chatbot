@@ -1,12 +1,14 @@
 """Answer questions using retrieved documents (RAG) and a local LLM.
 
 RAG = Retrieve relevant chunks -> Augment the prompt with them -> Generate an answer.
+Each user has a role, and retrieval only returns documents that role may read.
 
 Run from the project root:
     python -m src.chatbot
 """
 import ollama
 
+from src.auth import USERS, get_role
 from src.retriever import retrieve
 
 CHAT_MODEL = "llama3.2"
@@ -22,9 +24,9 @@ def build_context(chunks):
     return "\n\n".join(f"[Source: {c['source']}]\n{c['text']}" for c in chunks)
 
 
-def answer(question, k=3):
-    """Retrieve relevant chunks, then ask the LLM to answer using them."""
-    chunks = retrieve(question, k=k)
+def answer(question, role, k=3):
+    """Retrieve chunks this role may read, then ask the LLM to answer using them."""
+    chunks = retrieve(question, role, k=k)
     response = ollama.chat(
         model=CHAT_MODEL,
         messages=[
@@ -37,7 +39,18 @@ def answer(question, k=3):
 
 
 def main():
-    print("Secure RAG Chatbot. Type 'quit' to exit.\n")
+    print("Secure RAG Chatbot. Type 'quit' to exit.")
+    print("Demo users: " + ", ".join(f"{u} ({r})" for u, r in USERS.items()) + "\n")
+    try:
+        username = input("Username: ")
+        role = get_role(username)
+    except PermissionError as e:
+        print(f"Access denied. {e}")
+        return
+    except (EOFError, KeyboardInterrupt):
+        return
+    print(f"Logged in as {username.strip().lower()} ({role})\n")
+
     while True:
         try:
             question = input("You: ").strip()
@@ -48,7 +61,7 @@ def main():
         if not question:
             continue
 
-        reply, chunks = answer(question)
+        reply, chunks = answer(question, role)
         sources = sorted({f"{c['source']} [{c['access']}]" for c in chunks})
         print(f"\nBot: {reply}")
         print(f"Sources: {', '.join(sources)}\n")
